@@ -1,6 +1,6 @@
 #pragma once
 
-#define FLICTRL_VERSION "0.1"
+#define FLICTRL_VERSION "0.2"
 
 #define FLICTRL_OK  (0)
 #define FLICTRL_ERR (1)

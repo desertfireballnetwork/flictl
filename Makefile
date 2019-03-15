@@ -20,7 +20,7 @@ LD	      = g++
 CFLAGS        = -g
 			#-v -O2
 HDRPATH	      = -I. -I./libfli -I/usr/local/include
-C++FLAGS      = -g -Wall
+C++FLAGS      = -g -Wall -DBOOST_DATE_TIME_POSIX_TIME_STD_CONFIG
 			#-O2 -v -Wno-deprecated
 C++HDRPATH    = -I/usr/include $(HDRPATH)
 
@@ -28,7 +28,7 @@ C++HDRPATH    = -I/usr/include $(HDRPATH)
 LDFLAGS       =	
 			#-Wl,--verbose 
 LDPATHS       = -L./libfli -L/usr/local/lib
-STDLIBS       = -lpthread -lboost_program_options
+STDLIBS       = -lpthread -lboost_program_options -lboost_date_time
 OTHERLIBS     = -lusb-1.0 -lcfitsio
 STATICLIBS    = -llibflipro
 
@@ -59,7 +59,7 @@ clean:;		@rm -f $(OBJS) $(C_OBJS) $(OBJS2) $(C_OBJS2) $(PROGRAMS) core
 
 cleanall:;	@make clean; rm -rf *~
 
-install:;	@sudo cp $(PROGRAM) $(INSTALL_DIR_BIN)
+install:;	@make && sudo cp $(PROGRAM) $(INSTALL_DIR_BIN)
 
 tgz:;		@tar -cvzf `date "+%Y-%m-%d_%H%M"`_flictl.tar.gz $(SRCS) $(C_SRCS) $(HDRS) Makefile
 

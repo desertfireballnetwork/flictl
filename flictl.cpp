@@ -2,13 +2,16 @@
 #include "flicamera.h"
 #include "flictl.h"
 
+#include <boost/program_options.hpp>
+#include <boost/date_time/gregorian/gregorian.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include <fitsio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
 #include <string>
-#include <boost/program_options.hpp>
 
 namespace po = boost::program_options;
 
@@ -23,13 +26,13 @@ void conflicting_options(const po::variables_map& vm,
 }
 
 /// just write a bitmap to fits file.
-int writeFits(char *filename, int width, int height, void *data)
+int writeFits(const char *filename, int width, int height, void *data)
 {
   FILE *pFile = fopen(filename, "r");
   if(pFile != NULL)
     {
       fclose(pFile);
-      printf("\tFile '%s' already exists\n", filename);
+      std::cerr << "flictl: writeFits() Failed! File " << filename << " already exists" << std::endl;
       return 1;
     }
   
@@ -40,7 +43,7 @@ int writeFits(char *filename, int width, int height, void *data)
   fits_create_file(&fp, filename, &status);
   if(status)
     {
-      printf("fits_create_file: %d\n", status);
+      std::cerr << "flictl: writeFits() Failed! fits_create_file() retval " << status << std::endl;
       fits_report_error(stderr, status);
       return -1;
     }
@@ -48,7 +51,7 @@ int writeFits(char *filename, int width, int height, void *data)
   fits_create_img(fp, USHORT_IMG, 2, naxes, &status);
   if(status)
     {
-      printf("fits_create_img: %d\n", status);
+      std::cerr << "flictl: writeFits() Failed! fits_create_img() retval " << status << std::endl;
       fits_report_error(stderr, status);
       return -1;
     }
@@ -58,7 +61,7 @@ int writeFits(char *filename, int width, int height, void *data)
   fits_write_img(fp, TUSHORT, 1, (width * height), data, &status);
   if(status)
     {
-      printf("fits_write_img: %d\n", status);
+      std::cerr << "flictl: writeFits() Failed! fits_write_img() retval " << status << std::endl;
       fits_report_error(stderr, status);
       return -1;
     }
@@ -67,7 +70,7 @@ int writeFits(char *filename, int width, int height, void *data)
   
   if(status)
     {
-      printf("fits_close_file: %d\n", status);
+      std::cerr << "flictl: writeFits() Failed! fits_close_file() retval " << status << std::endl;
       fits_report_error(stderr, status);
       return -1;
     }
@@ -89,6 +92,7 @@ int main(int argc, const char ** argv)
       double coolTemp = 25.0;
       bool shutterOpen = false;
       bool isExtTriggerEnabled = false;
+      bool isTimeInFileNames = false;
       // boost lib cannot work with enum FPROEXTTRIGTYPE externalTriggerType;
       // (well may be it does but not easily - to be investigated)
       uint32_t externalTriggerType;
@@ -99,10 +103,16 @@ int main(int argc, const char ** argv)
       uint32_t highGain = 0;
       uint32_t numImages = 1;
       // times are in nanoseconds
-      uint64_t local_exposureTime = 500000000; // 0.5s
-      uint64_t local_frameDelay = 1000000000; // 1s
+      // the default values are what camera configuretion dump reports after camera power-up
+      uint64_t local_exposureTime = 2000000; // 2ms aka 1/500s
+      uint64_t local_frameDelay = 0; // 0s
       std::string fileNameBase = "fli_image";
       std::string fileName;
+      
+      boost::posix_time::ptime ptime_frameTimeStamp;
+      boost::posix_time::ptime ptime_truncFrameTimeStamp;
+      boost::posix_time::ptime ptime_roundFrameTimeStamp;
+      std::string str_fileNameFrameTimeStamp = "";
       
       po::options_description desc("flictl options");
 
@@ -130,8 +140,9 @@ int main(int argc, const char ** argv)
 	("getprintconfig", "Read configuration from camera and print it")
 	("grabimage,g", "Grab single image and exit")
 	("grabimages,G", po::value<uint32_t>(&numImages), "Grab N images and exit")
-	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fit + file_H.fit (low gain and high gain images)");
-	
+	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fit + file_H.fit (low gain and high gain images)")
+	("time",  po::bool_switch(&isTimeInFileNames), "Add exposure start time to filename(s)" );
+      
       po::variables_map vm;
 
       po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -141,6 +152,7 @@ int main(int argc, const char ** argv)
       if(vm.count("help"))
 	{
 	  /// Print help
+	  std::cout << "flictrl version : " << FLICTRL_VERSION << std::endl;
 	  std::cout << desc << std::endl;
 	  exit( FLICTRL_OK );
 	}
@@ -151,21 +163,58 @@ int main(int argc, const char ** argv)
 	  exit( FLICTRL_OK );
 	}
 
-      // Now we declare the camera class ans start initialising it
-      FliCameraC fc; 
-      
-      // list camera devices and open first camera
-      if( ! fc.listDevices() )
+      if(vm.count("lowgain"))
 	{
-	  exitCloseCameraDevice( &fc, FLICTRL_ERR_NO_CAMERA_FOUND );
+	  /// set low gain
+	  std::cout << "DEBUG: set lowgain list index = " << lowGain << std::endl;
 	}
-      if( ! fc.openDevice() )
-	{
-	  exitCloseCameraDevice( &fc, FLICTRL_ERR_CANNOT_OPEN_CAMERA_DEVICE );
-	}
-      fc.getCapabilities();
-      fc.getPixelConfig(); 
       
+      if(vm.count("highgain"))
+	{
+	  /// set high gain
+	  std::cout << "DEBUG: set highgain list index = " << highGain << std::endl;
+	}
+
+      if( vm.count("time") )
+	{
+	  std::cout << "DEBUG: add exposure start time to image file name(s) = " << isTimeInFileNames << std::endl;
+	}
+
+      if( vm.count("filename") )
+	{
+	  if( isTimeInFileNames )
+	    {
+	      ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time();
+	      //std::cout << "DEBUG: frameTimeStamp read time = " << ptime_frameTimeStamp << std::endl;
+	      ptime_frameTimeStamp -= boost::posix_time::nanoseconds(local_exposureTime);
+	      //std::cout << "DEBUG: frameTimeStamp start exp time = " << ptime_frameTimeStamp << std::endl;
+	      //std::cout << "DEBUG: frameTimeStamp start exp time truncated nanoseconds = "
+	      //	<< ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 << std::endl;
+
+	       if( isExtTriggerEnabled )
+		 {
+		   ptime_truncFrameTimeStamp = ptime_frameTimeStamp
+		     - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
+		   str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
+		   std::cout << "DEBUG: external trigger frameTimeStamp string example: " << str_fileNameFrameTimeStamp << std::endl;
+
+		 }
+	       else
+		 {
+		   uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
+		   ptime_roundFrameTimeStamp = ptime_frameTimeStamp
+		     - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
+		     + boost::posix_time::seconds(extraSec);
+		   str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
+		   
+		   std::cout << "DEBUG: internal trigger frameTimeStamp string example: " << str_fileNameFrameTimeStamp << std::endl;
+		 }
+	    }
+	  
+	  fileNameBase = vm["filename"].as<std::string>();
+	  std::cout << "DEBUG: set file name base = " << fileNameBase << std::endl;
+	}
+
       if(vm.count("printcap"))
 	{
 	  /// print camera capabilities
@@ -174,7 +223,25 @@ int main(int argc, const char ** argv)
 	      std::cout << "Print camera capabilities" << std::endl;
 	    }
 	}
-
+      
+      // ---------------------------------------------------------------
+      // Now we declare the camera class and start initialising it
+      FliCameraC fc; 
+      
+      // list camera devices and open first camera
+      if( ! fc.listDevices() )
+	{
+	  std::cerr << argv[0] << ": fc.listDevices() Failed!" << std::endl;
+	  exitCloseCameraDevice( &fc, FLICTRL_ERR_NO_CAMERA_FOUND );
+	}
+      if( ! fc.openDevice() )
+	{
+	  std::cerr << argv[0] << ": fc.openDevice() Failed!" << std::endl;
+	  exitCloseCameraDevice( &fc, FLICTRL_ERR_CANNOT_OPEN_CAMERA_DEVICE );
+	}
+      fc.getCapabilities();
+      fc.getPixelConfig(); 
+      
       if(vm.count("cool"))
 	{
 	  /// Enable cooling - set temperature point
@@ -230,24 +297,6 @@ int main(int argc, const char ** argv)
 	    {
 	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
 	    }	  
-	}
-      
-      if(vm.count("lowgain"))
-	{
-	  /// set low gain
-	  std::cout << "DEBUG: set lowgain list index = " << lowGain << std::endl;
-	}
-      
-      if(vm.count("highgain"))
-	{
-	  /// set high gain
-	  std::cout << "DEBUG: set highgain list index = " << highGain << std::endl;
-	}
-
-      if(vm.count("filename"))
-	{
-	  fileNameBase = vm["filename"].as<std::string>();
-	  std::cout << "DEBUG: set file name base = " << fileNameBase << std::endl;
 	}
       
       //--------------------------------------
@@ -309,19 +358,48 @@ int main(int argc, const char ** argv)
       //------------------------------------------------
       if(vm.count("grabimage"))
 	{
+	  std::cout << "Grab single image using internal triggering and exit. " << std::endl;
 	  /// Grab single image and exit
 	  if( ! fc.allocFrameFullRes() )
 	    {
+	      std::cerr << argv[0] << ": fc.allocFrameFullRes() Failed!" << std::endl;
 	      exitCloseCameraDevice( &fc, FLICTRL_ERR_FAILED_ALLOC_FRAME );
 	    }
 	  if( ! fc.prepareCaptureFullSensor() )
 	    {
+	      std::cerr << argv[0] << ": fc.prepareCaptureFullSensor() Failed!" << std::endl;
 	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
 	    }
 	  if( ! fc.grabImage() )
 	    {
+	      std::cerr << argv[0] << ": fc.grabImage() Failed!" << std::endl;
 	      exitCloseCameraDevice( &fc, FLICTRL_ERR_FAILED_GRAB_IMAGE );
 	    }
+	  if( isTimeInFileNames )
+	    {
+	      // calculate approx time of exposure start
+	      // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
+	      // for readout time (and shutter delay time as well...)
+	      ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
+		- boost::posix_time::nanoseconds(local_exposureTime);
+	      if( isExtTriggerEnabled )
+		{
+		  // external trigger is synced to GPS PPS, so we can truncate sub-seconds
+		  ptime_truncFrameTimeStamp = ptime_frameTimeStamp
+		    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
+		  str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
+		}
+	      else
+		{
+		  // internal trigger is not synced (?), so we round sub-seconds
+		  uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
+		  ptime_roundFrameTimeStamp = ptime_frameTimeStamp
+		    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
+		    + boost::posix_time::seconds(extraSec);
+		  str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
+		}		    
+	    }
+
 /* single (LDR only) image	  
 	  uint16_t* bitmap16bit = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
 
@@ -348,7 +426,7 @@ int main(int argc, const char ** argv)
 	  fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
 	  char *fName;
 	  
-	  fileName = fileNameBase + "_L.fit";
+	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_L.fit";
 	  std::cout << "Write low gain image to as " << fileName << std::endl;
 	  fName = &fileName[0u];
 	  // TODO: check retval of writeFits
@@ -357,7 +435,7 @@ int main(int argc, const char ** argv)
 		     FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
 		     bitmap16bitL );
 
-	  fileName = fileNameBase + "_H.fit";
+	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_H.fit";
 	  std::cout << "Write high gain image to as " << fileName << std::endl;
 	  fName = &fileName[0u];
 	  // TODO: check retval of writeFits
@@ -415,12 +493,36 @@ int main(int argc, const char ** argv)
 		{
 		  // TODO - define specific err code
 		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
-		}		
+		}
+	      if( isTimeInFileNames )
+		{
+		  // calculate approx time of exposure start
+		  // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
+		  // for readout time (and shutter delay time as well...)
+		  ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
+		    - boost::posix_time::nanoseconds(local_exposureTime);
+		  if( isExtTriggerEnabled )
+		    {
+		      // external trigger is synced to GPS PPS, so we can truncate sub-seconds
+		      ptime_truncFrameTimeStamp = ptime_frameTimeStamp
+			- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
+		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
+		    }
+		  else
+		    {
+		      // internal trigger is not synced (?), so we round sub-seconds		      
+		      uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
+		      ptime_roundFrameTimeStamp = ptime_frameTimeStamp
+			- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
+			+ boost::posix_time::seconds(extraSec);
+		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
+		    }		    
+		}
 	      fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
 	      // TODO: replace "%05d" with something using numDigits
 	      snprintf( numberStr, numDigits+1, "%05d", i );
 	      // TODO: add time to the file name - as for DFN cameras
-	      fileName = fileNameBase + numberStr + "_L.fit";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L.fit";
 	      std::cout << "  Write low gain image to as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
@@ -429,7 +531,7 @@ int main(int argc, const char ** argv)
 			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
 			 bitmap16bitL );
 	      
-	      fileName = fileNameBase + numberStr + "_H.fit";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H.fit";
 	      std::cout << "  Write high gain image to as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
