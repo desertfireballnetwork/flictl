@@ -59,7 +59,7 @@ clean:;		@rm -f $(OBJS) $(C_OBJS) $(OBJS2) $(C_OBJS2) $(PROGRAMS) core
 
 cleanall:;	@make clean; rm -rf *~
 
-install:;	@make && sudo cp $(PROGRAM) $(INSTALL_DIR_BIN)
+install:;	@make && sudo cp $(PROGRAM) $(INSTALL_DIR_BIN) && sudo chown root:root $(INSTALL_DIR_BIN)/$(PROGRAM)
 
 tgz:;		@tar -cvzf `date "+%Y-%m-%d_%H%M"`_flictl.tar.gz $(SRCS) $(C_SRCS) $(HDRS) Makefile
 
