@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+flictl
+
+# Images captured by flictl
+*.fit
