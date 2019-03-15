@@ -34,3 +34,12 @@ flictl
 
 # Images captured by flictl
 *.fit
+
+# exports
+*.tar.gz
+*.gz
+*.tgz
+*.zip
+
+# backup files (eg emacs)
+*~
