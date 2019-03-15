@@ -15,6 +15,11 @@
 
 namespace po = boost::program_options;
 
+void printVersion()
+{
+  std::cout << FLICTL_APP_DESCR << " version " << FLICTL_VERSION << std::endl;
+}
+
 /// check that 'opt1' and 'opt2' are not specified at the same time
 void conflicting_options(const po::variables_map& vm, 
                          const char* opt1, const char* opt2)
@@ -114,7 +119,7 @@ int main(int argc, const char ** argv)
       boost::posix_time::ptime ptime_roundFrameTimeStamp;
       std::string str_fileNameFrameTimeStamp = "";
       
-      po::options_description desc("flictl options");
+      po::options_description desc("Usage:\n flictl [options]\n\nOption");
 
 #define EXT_TRIG_TYPE_HELP_TEXT "Set external trigger type\n\t" 
       
@@ -125,7 +130,7 @@ int main(int argc, const char ** argv)
       
       desc.add_options()
 	("help,h", "Print flictl help and exit.")
-	("version,v", "Print flictl version and exit.")
+	("version,V", "Print flictl version and exit.")
 	("printcap,p", po::bool_switch(&printCapabilities), "Print camera capabilities and temperatures")
 	("printmodes", po::bool_switch(&printModes), "Print list of camera modes")
 	//	("mode,m", po::value<uint32_t>(&mode), "Set cemare mode (index from list of modes)")
@@ -149,18 +154,19 @@ int main(int argc, const char ** argv)
       // no config file yet ... store(parse_config_file("example.cfg", desc), vm);
       notify(vm);
 
-      if(vm.count("help"))
+      // dunno how to detect that there are no parameters with boost::program_options
+      if( (argc <= 1)  || vm.count("help") )
 	{
 	  /// Print help
-	  std::cout << "flictrl version : " << FLICTRL_VERSION << std::endl;
+	  printVersion();
 	  std::cout << desc << std::endl;
-	  exit( FLICTRL_OK );
+	  exit( FLICTL_OK );
 	}
       if(vm.count("version"))
 	{
 	  /// Print program version
-	  std::cout << "flictrl version : " << FLICTRL_VERSION << std::endl;
-	  exit( FLICTRL_OK );
+	  printVersion();
+	  exit( FLICTL_OK );
 	}
 
       if(vm.count("lowgain"))
@@ -232,12 +238,12 @@ int main(int argc, const char ** argv)
       if( ! fc.listDevices() )
 	{
 	  std::cerr << argv[0] << ": fc.listDevices() Failed!" << std::endl;
-	  exitCloseCameraDevice( &fc, FLICTRL_ERR_NO_CAMERA_FOUND );
+	  exitCloseCameraDevice( &fc, FLICTL_ERR_NO_CAMERA_FOUND );
 	}
       if( ! fc.openDevice() )
 	{
 	  std::cerr << argv[0] << ": fc.openDevice() Failed!" << std::endl;
-	  exitCloseCameraDevice( &fc, FLICTRL_ERR_CANNOT_OPEN_CAMERA_DEVICE );
+	  exitCloseCameraDevice( &fc, FLICTL_ERR_CANNOT_OPEN_CAMERA_DEVICE );
 	}
       fc.getCapabilities();
       fc.getPixelConfig(); 
@@ -272,7 +278,7 @@ int main(int argc, const char ** argv)
 	    {
 	      if( ! fc.setShutterUserControl(true) )
 		{
-		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
+		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}
 	    }
 	  if( fc.setShutter( shutterOpen ) )
@@ -295,7 +301,7 @@ int main(int argc, const char ** argv)
 	    }
 	  if( ! fc.setExternalTriggerEnable( isExtTriggerEnabled, (FPROEXTTRIGTYPE)externalTriggerType ) )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }	  
 	}
       
@@ -310,7 +316,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.printModes() )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }	  	    
 	}
 
@@ -318,7 +324,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.setExpTime(local_exposureTime) )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 	}
 
@@ -326,7 +332,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.setExpDelay(local_frameDelay) )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 	}
 
@@ -334,7 +340,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.setLowGain(lowGain) )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 	}
 
@@ -342,7 +348,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.setHighGain(highGain) )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 	}
 
@@ -351,7 +357,7 @@ int main(int argc, const char ** argv)
 	{
 	  if( ! fc.getPrintConfig() )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }	  
 	}
 
@@ -363,17 +369,17 @@ int main(int argc, const char ** argv)
 	  if( ! fc.allocFrameFullRes() )
 	    {
 	      std::cerr << argv[0] << ": fc.allocFrameFullRes() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR_FAILED_ALLOC_FRAME );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR_FAILED_ALLOC_FRAME );
 	    }
 	  if( ! fc.prepareCaptureFullSensor() )
 	    {
 	      std::cerr << argv[0] << ": fc.prepareCaptureFullSensor() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 	  if( ! fc.grabImage() )
 	    {
 	      std::cerr << argv[0] << ": fc.grabImage() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR_FAILED_GRAB_IMAGE );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR_FAILED_GRAB_IMAGE );
 	    }
 	  if( isTimeInFileNames )
 	    {
@@ -399,26 +405,6 @@ int main(int argc, const char ** argv)
 		  str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
 		}		    
 	    }
-
-/* single (LDR only) image	  
-	  uint16_t* bitmap16bit = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
-
-	  fc.convertLdrRawToBitmap16bit( bitmap16bit );
-	  
-	  if(vm.count("filename"))	    
-	    {
-	      fileNameBase = vm["filename"].as<std::string>();
-	      fileName = filenameBase + "_H.fit";
-	      std::cout << "Write image to as " << fileName << std::endl;
-	      char *fName = &fileName[0u];
-	      writeFits( fName,
-			 FLICAMERA_GSENSE4040_SENSOR_WIDTH,
-			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
-			 bitmap16bit );
-	    }
-	  
-	  delete [] bitmap16bit;
-*/
 
 	  uint16_t* bitmap16bitL = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
 	  uint16_t* bitmap16bitH = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
@@ -446,7 +432,7 @@ int main(int argc, const char ** argv)
 	  delete [] bitmap16bitL;
 	  delete [] bitmap16bitH;
 	  // all good exit witout error
-	  exitCloseCameraDevice( &fc, FLICTRL_OK );
+	  exitCloseCameraDevice( &fc, FLICTL_OK );
 	}
       
       //------------------------------------------------
@@ -456,11 +442,11 @@ int main(int argc, const char ** argv)
 
 	  if( ! fc.allocFrameFullRes() )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR_FAILED_ALLOC_FRAME );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR_FAILED_ALLOC_FRAME );
 	    }
 	  if( ! fc.prepareCaptureFullSensor() )
 	    {
-	      exitCloseCameraDevice( &fc, FLICTRL_ERR );
+	      exitCloseCameraDevice( &fc, FLICTL_ERR );
 	    }
 
 	  if( ! isExtTriggerEnabled )
@@ -470,7 +456,7 @@ int main(int argc, const char ** argv)
 	      if( ! fc.startCapture(numImages) )
 		{
 		  // TODO - define specific err code
-		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
+		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}
 	    }
 
@@ -492,21 +478,23 @@ int main(int argc, const char ** argv)
 	      if( ! fc.getImage() )
 		{
 		  // TODO - define specific err code
-		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
+		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}
+	      // calculate approx time of exposure start
+	      // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
+	      // for readout time (and shutter delay time as well...)
+	      ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
+		- boost::posix_time::nanoseconds(local_exposureTime); 
+	      // external trigger is synced to GPS PPS, so we can truncate sub-seconds
+	      ptime_truncFrameTimeStamp = ptime_frameTimeStamp
+		- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
 	      if( isTimeInFileNames )
 		{
-		  // calculate approx time of exposure start
-		  // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
-		  // for readout time (and shutter delay time as well...)
-		  ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
-		    - boost::posix_time::nanoseconds(local_exposureTime);
 		  if( isExtTriggerEnabled )
 		    {
-		      // external trigger is synced to GPS PPS, so we can truncate sub-seconds
-		      ptime_truncFrameTimeStamp = ptime_frameTimeStamp
-			- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
 		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
+		      std::cout << "  Externally triggered frame capture time = "
+				<< to_iso_string( ptime_truncFrameTimeStamp ) << std::endl;
 		    }
 		  else
 		    {
@@ -516,6 +504,8 @@ int main(int argc, const char ** argv)
 			- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
 			+ boost::posix_time::seconds(extraSec);
 		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
+		      std::cout << "  Approx internally triggered frame capture time = "
+				<< to_iso_string( ptime_frameTimeStamp ) << std::endl;
 		    }		    
 		}
 	      fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
@@ -552,7 +542,7 @@ int main(int argc, const char ** argv)
 	      fc.getExternalTriggerEnable( &dummy, (FPROEXTTRIGTYPE*)(&externalTriggerType) );	      
 	      if( ! fc.setExternalTriggerEnable( false, (FPROEXTTRIGTYPE)externalTriggerType ) )
 		{
-		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
+		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}	  
 	    }
 	  else
@@ -562,16 +552,17 @@ int main(int argc, const char ** argv)
 	      if( ! fc.stopCapture() )
 		{
 		  // TODO - define specific err code
-		  exitCloseCameraDevice( &fc, FLICTRL_ERR );
+		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}
 	    }
 	  // all good exit witout error
-	  exitCloseCameraDevice( &fc, FLICTRL_OK );
+	  exitCloseCameraDevice( &fc, FLICTL_OK );
         }
     }
   catch(std::exception& e)
     {
-      std::cerr << "Error parsing options!" << std::endl;
+      std::cerr << "Error parsing options!" << std::endl;      
       std::cerr << e.what() << std::endl;
+      std::cerr << "Use 'flictl -h' to het help" << std::endl;      
     }  
 }
