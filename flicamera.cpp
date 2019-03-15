@@ -961,14 +961,19 @@ bool FliCameraC::grabImage()
       uiSizeGrabbed = uiFrameSizeInBytes;
       if( isExternalTriggerEnabled )
 	{
-	  iResult = FPROFrame_GetVideoFrameExt( siDeviceHandle, pFrame, &uiSizeGrabbed );
+	  iGrabResult = FPROFrame_GetVideoFrameExt( siDeviceHandle, pFrame, &uiSizeGrabbed );
 	}
       else
 	{
-	  iResult = FPROFrame_GetVideoFrame( siDeviceHandle, pFrame, &uiSizeGrabbed, 0 );
+	  iGrabResult = FPROFrame_GetVideoFrame( siDeviceHandle, pFrame, &uiSizeGrabbed, 0 );
 	}
       // Regardless of how the capture turned out, stop the capture
       iResult = FPROFrame_CaptureStop(siDeviceHandle);
+      if (iResult < 0)
+	{
+	  printf("FliCameraC::grabImage() ERROR: FPROFrame_CaptureStop() failed, retval = %d\n", iResult );	  
+	}
+      
       // If the FPROFrame_GetVideoFrame() succeeded- then process it
       if (iGrabResult >= 0)
 	{
@@ -989,6 +994,11 @@ bool FliCameraC::grabImage()
 	    }
 	}
     }
+  else
+    {
+      printf("FliCameraC::grabImage() ERROR: FPROFrame_CaptureStart() failed, retval = %d\n", iResult );	  
+    }
+  
   return (iGrabResult >= 0);
 }
 
