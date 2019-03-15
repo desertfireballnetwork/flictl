@@ -1037,7 +1037,7 @@ bool FliCameraC::getImage()
       // here you can do whatever you want with the frame data.
       if (uiSizeGrabbed == uiFrameSizeInBytes)
 	{
-	  printf("FliCameraC::getImage(): frame OK\n");
+	  printf("FliCameraC::getImage(): Frame OK\n");
 	  // got the correct number of bytes
 	  return true;
 	}
