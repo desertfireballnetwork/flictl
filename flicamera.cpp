@@ -1098,14 +1098,8 @@ bool FliCameraC::endCapture()
 
 //--------------------------------------------------------------
 /// return true if succeeded, false if failed
-bool FliCameraC::extractMetaData( uint8_t* pMetaData, uint32_t* metaDataSize )
+bool FliCameraC::getMetaDataSize( uint32_t* metaDataSize )
 {
-  if( pFrame == NULL )
-    {
-      // there is apparently no frame captured
-      return false;
-    }
-  pMetaData = pFrame;
   if( weKnowCapabilities )
     {
       *metaDataSize = s_camCapabilities.uiMetaDataSize;
@@ -1115,6 +1109,19 @@ bool FliCameraC::extractMetaData( uint8_t* pMetaData, uint32_t* metaDataSize )
     {
       return false;
     }  
+}
+  
+//--------------------------------------------------------------
+/// return true if succeeded, false if failed
+bool FliCameraC::extractMetaData( uint8_t* pMetaData, uint32_t metaDataSize )
+{
+  if( pFrame == NULL )
+    {
+      // there is apparently no frame captured
+      return false;
+    }
+  memcpy( (void*)pMetaData, (void*)pFrame, metaDataSize );
+  return true;
 }
   
 //--------------------------------------------------------------

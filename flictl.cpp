@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <string>
+#include <fstream>
 
 namespace po = boost::program_options;
 
@@ -28,6 +29,24 @@ void conflicting_options(const po::variables_map& vm,
         && vm.count(opt2) && !vm[opt2].defaulted())
       throw std::logic_error(std::string("Conflicting options '") 
                           + opt1 + "' and '" + opt2 + "'.");
+}
+
+/// write FLI camera meta data binary blob to file - as it is
+int writeMetaData( const char *filename, uint8_t *mem, uint32_t memSize )
+{
+  std::ofstream os( filename, std::ofstream::binary );
+  if( ! os.is_open() ) 
+    {
+      // show message:
+      std::cerr << "writeMetaData(): Error opening file " << filename << std::endl;
+      return -1;
+    }
+    
+  os.write( (char *)mem, memSize );
+  os.flush();
+  os.close();
+
+  return 0;  
 }
 
 /// just write a bitmap to fits file.
@@ -98,6 +117,7 @@ int main(int argc, const char ** argv)
       bool shutterOpen = false;
       bool isExtTriggerEnabled = false;
       bool isTimeInFileNames = false;
+      bool doWriteMetaData = false;
       // boost lib cannot work with enum FPROEXTTRIGTYPE externalTriggerType;
       // (well may be it does but not easily - to be investigated)
       uint32_t externalTriggerType;
@@ -146,7 +166,8 @@ int main(int argc, const char ** argv)
 	("grabimage,g", "Grab single image and exit")
 	("grabimages,G", po::value<uint32_t>(&numImages), "Grab N images and exit")
 	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fits + file_H.fits (low gain and high gain images)")
-	("time",  po::bool_switch(&isTimeInFileNames), "Add exposure start time to filename(s)" );
+	("time",  po::bool_switch(&isTimeInFileNames), "Add exposure start time to filename(s)" )
+	("meta",  po::bool_switch(&doWriteMetaData), "Write binary meta data to extra file" );
       
       po::variables_map vm;
 
@@ -184,6 +205,11 @@ int main(int argc, const char ** argv)
       if( vm.count("time") )
 	{
 	  std::cout << "DEBUG: add exposure start time to image file name(s) = " << isTimeInFileNames << std::endl;
+	}
+
+      if( vm.count("meta") )
+	{
+	  std::cout << "DEBUG: write meta data to extra file = " << doWriteMetaData << std::endl;
 	}
 
       if( vm.count("filename") )
@@ -463,6 +489,10 @@ int main(int argc, const char ** argv)
 	  uint16_t* bitmap16bitL = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
 	  uint16_t* bitmap16bitH = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
 
+	  uint32_t metaDataSize;
+	  fc.getMetaDataSize( &metaDataSize );
+	  uint8_t* metaDataBinBlob = new uint8_t[ metaDataSize ];
+	    
 	  uint32_t numDigits = 5;
 	  char numberStr[numDigits + 1];
 	  char *fName;
@@ -508,12 +538,12 @@ int main(int argc, const char ** argv)
 				<< to_iso_string( ptime_frameTimeStamp ) << std::endl;
 		    }		    
 		}
-	      fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
+	      fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );	      
 	      // TODO: replace "%05d" with something using numDigits
 	      snprintf( numberStr, numDigits+1, "%05d", i );
 	      // TODO: add time to the file name - as for DFN cameras
 	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L.fits";
-	      std::cout << "  Write low gain image to as " << fileName << std::endl;
+	      std::cout << "  Write low gain image as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
 	      writeFits( fName,
@@ -522,18 +552,28 @@ int main(int argc, const char ** argv)
 			 bitmap16bitL );
 	      
 	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H.fits";
-	      std::cout << "  Write high gain image to as " << fileName << std::endl;
+	      std::cout << "  Write high gain image as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
 	      writeFits( fName,
 			 FLICAMERA_GSENSE4040_SENSOR_WIDTH,
 			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
 			 bitmap16bitH );
-	      
+
+	      if( doWriteMetaData )
+		{
+		  // write meta data binary blob
+		  fc.extractMetaData( metaDataBinBlob, metaDataSize );
+		  fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_meta.bin";
+		  std::cout << "  Write binary meta data as " << fileName << std::endl;
+		  fName = &fileName[0u];
+		  writeMetaData( fName, metaDataBinBlob, metaDataSize );
+		}
 	    }
 	  delete [] bitmap16bitL;
 	  delete [] bitmap16bitH;
-
+	  delete [] metaDataBinBlob;
+	  
 	  if( isExtTriggerEnabled )
 	    {
 	      // disable external triggering (set camera to use internal triggering),

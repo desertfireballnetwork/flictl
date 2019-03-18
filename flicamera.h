@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <iostream>
 #include <cmath>
 
@@ -91,9 +92,10 @@ class FliCameraC
   bool endCapture();
   // bool abortCapture();
 
-  bool extractMetaData( uint8_t* pMetaData, uint32_t *metaDataSize );
+  bool getMetaDataSize( uint32_t *metaDataSize );
+  bool extractMetaData( uint8_t* pMetaData, uint32_t metaDataSize );
   bool convertHdrRawToBitmaps16bit( uint16_t* bitamp16bitLow, uint16_t* bitamp16bitHigh );
   bool convertLdrRawToBitmap16bit( uint16_t* bitamp16bit );
-
+  
   void* getImagePtr();
 };
