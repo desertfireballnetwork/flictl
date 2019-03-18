@@ -119,7 +119,7 @@ int main(int argc, const char ** argv)
       boost::posix_time::ptime ptime_roundFrameTimeStamp;
       std::string str_fileNameFrameTimeStamp = "";
       
-      po::options_description desc("Usage:\n flictl [options]\n\nOption");
+      po::options_description desc("Usage:\n flictl [options]\n\nOptions");
 
 #define EXT_TRIG_TYPE_HELP_TEXT "Set external trigger type\n\t" 
       
@@ -145,7 +145,7 @@ int main(int argc, const char ** argv)
 	("getprintconfig", "Read configuration from camera and print it")
 	("grabimage,g", "Grab single image and exit")
 	("grabimages,G", po::value<uint32_t>(&numImages), "Grab N images and exit")
-	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fit + file_H.fit (low gain and high gain images)")
+	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fits + file_H.fits (low gain and high gain images)")
 	("time",  po::bool_switch(&isTimeInFileNames), "Add exposure start time to filename(s)" );
       
       po::variables_map vm;
@@ -412,7 +412,7 @@ int main(int argc, const char ** argv)
 	  fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
 	  char *fName;
 	  
-	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_L.fit";
+	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_L.fits";
 	  std::cout << "Write low gain image to as " << fileName << std::endl;
 	  fName = &fileName[0u];
 	  // TODO: check retval of writeFits
@@ -421,7 +421,7 @@ int main(int argc, const char ** argv)
 		     FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
 		     bitmap16bitL );
 
-	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_H.fit";
+	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_H.fits";
 	  std::cout << "Write high gain image to as " << fileName << std::endl;
 	  fName = &fileName[0u];
 	  // TODO: check retval of writeFits
@@ -512,7 +512,7 @@ int main(int argc, const char ** argv)
 	      // TODO: replace "%05d" with something using numDigits
 	      snprintf( numberStr, numDigits+1, "%05d", i );
 	      // TODO: add time to the file name - as for DFN cameras
-	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L.fit";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L.fits";
 	      std::cout << "  Write low gain image to as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
@@ -521,7 +521,7 @@ int main(int argc, const char ** argv)
 			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
 			 bitmap16bitL );
 	      
-	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H.fit";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H.fits";
 	      std::cout << "  Write high gain image to as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
