@@ -16,6 +16,20 @@ FliCameraC::FliCameraC():
   coolerTemp = 0;
   isDeviceOpen = false;
   isExternalTriggerEnabled = false;
+  // default coordinates - Perth, Curtin Bentley campus
+  latitude = -32.00720;
+  longitude = 115.89469;
+  altitude = 50.0;
+
+  // default low gain index setting is 1, which corresponds to device index 3 and gain 0.600
+  fLowGainValue = 2.8;
+  uiLowGainIndex = 14;
+  // default high gain index setting is 10, which corresponds to device index 19 and gain 2.200
+  fHighGainValue = 16.5;
+  uiHighGainIndex = 57;
+  
+  str_fileNameFrameTimeStamp = "";
+  str_siteLocation = "lab";
 }
 
 //--------------------------------------------------------------
@@ -216,34 +230,32 @@ void FliCameraC::printCapabilities()
 		  printf ("    %d: %d = %5.3f\n", i, pNewTableHigh[i].uiDeviceIndex , fGainValue );
 		}
 	    }
-	  // Set the Low Gain to the second value in the list (index value of 1)
-	  uint32_t lowIndex=1;
-	  if (s_camCapabilities.uiLowGain >= (lowIndex + 1))
+
+	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainIndex);
+	  uint32_t lowIndex;
+	  for( lowIndex=0; lowIndex<s_camCapabilities.uiLowGain; lowIndex++ )
 	    {
-	      // Set the gain index for the table
-	      FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow[lowIndex].uiDeviceIndex);
-	      // Read it back- should be the same as what you set..
-	      // This is not required for proper operation, just being shown
-	      // for example purposes
-	      FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainIndex);
-	      fGainValue = (float)pNewTableLow[lowIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
-	      printf( "Current low gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
-		      lowIndex, uiGainIndex, fGainValue );
+	      if( uiGainIndex == pNewTableLow[lowIndex].uiDeviceIndex )
+		{
+		  break;
+		}
 	    }
-	  // Set the High Gain to the 11th value in the list (index value of 10)
-	  uint32_t highIndex=10;
-	  if (s_camCapabilities.uiHighGain >= (highIndex+1))
+	  fGainValue = (float)pNewTableLow[lowIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
+	  printf( "Current low gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
+		  lowIndex, uiGainIndex, fGainValue );
+
+	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainIndex);
+	  uint32_t highIndex;
+	  for( highIndex=0; highIndex<s_camCapabilities.uiLowGain; highIndex++ )
 	    {
-	      // Set the gain index for the table
-	      FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh[highIndex].uiDeviceIndex);
-	      // Read it back- should be the same as what you set..
-	      // This is not required for proper operation, just being shown
-	      // for example purposes
-	      FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainIndex);
-	      fGainValue = (float)pNewTableHigh[highIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
-	      printf( "Current high gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
+	      if( uiGainIndex == pNewTableLow[highIndex].uiDeviceIndex )
+		{
+		  break;
+		}
+	    }
+	  fGainValue = (float)pNewTableHigh[highIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
+	  printf( "Current high gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
 		      highIndex, uiGainIndex, fGainValue );
-	    }
 	}
       else
 	{
@@ -530,7 +542,7 @@ bool setHDRMode(bool state)
 //--------------------------------------------------------------
 /// set exposure time in nanoseconds
 /// return true if succeeded, false if failed
-bool FliCameraC::setExpTime(uint64_t exposureTime)
+bool FliCameraC::setExpTime(uint64_t param_exposureTime)
 {
   int32_t iResult = -1; // assuming failure
   uint64_t origExposureTime, readExposureTime, readFrameDelay;
@@ -547,7 +559,7 @@ bool FliCameraC::setExpTime(uint64_t exposureTime)
       // store real read values to class data members
       this->exposureTime = readExposureTime;
       this->frameDelay = readFrameDelay;
-      iResult = FPROCtrl_SetExposure(siDeviceHandle, exposureTime, readFrameDelay, immediate);
+      iResult = FPROCtrl_SetExposure(siDeviceHandle, param_exposureTime, readFrameDelay, immediate);
       if( iResult < 0 )
 	{
 	  std::cerr << "FliCameraC::setExpTime() ERROR: FPROCtrl_SetExposure() failed, retval=" << iResult << std::endl;
@@ -569,25 +581,25 @@ bool FliCameraC::setExpTime(uint64_t exposureTime)
 	      this->exposureTime = readExposureTime;
 	      this->frameDelay = readFrameDelay;
 	      // re-read of the set value succeeded, let's compare what we read with what we have set
-	      if( readExposureTime == exposureTime )
+	      if( readExposureTime == param_exposureTime )
 		{
 		  std::cout << "FliCameraC::setExpTime() DEBUG: exposure time [ns] changed "
-			  << origExposureTime << " -> "<< exposureTime << std::endl;		  
+			  << origExposureTime << " -> "<< this->exposureTime << std::endl;		  
 		  return true;
 		}
 	      else
 		{
 		  // the read back value is often not identical, but should differ less than 1% from the requested value
-		  if( (fabs((double)readExposureTime - (double)exposureTime) / (double)(exposureTime)) < 0.01 )
+		  if( (fabs((double)readExposureTime - (double)param_exposureTime) / (double)(param_exposureTime)) < 0.01 )
 		    {
 		      std::cout << "FliCameraC::setExpTime() WARNING: exposure time [ns] changed "
 				<< origExposureTime << " -> "<< readExposureTime
-				<< ", but requested " << exposureTime << std::endl;
+				<< ", but requested " << param_exposureTime << std::endl;
 		      return true;
 		    }
 		  else
 		    {
-		      std::cerr << "FliCameraC::setExpTime() ERROR: set exposure time " << exposureTime
+		      std::cerr << "FliCameraC::setExpTime() ERROR: set exposure time " << param_exposureTime
 			      << ", but reads back " << readExposureTime << std::endl;
 		      return false;
 		    }		  
@@ -674,7 +686,6 @@ bool FliCameraC::setLowGain(uint32_t gainIndex)
 {
   uint32_t uiGainDeviceIndex;
   uint32_t uiNumGainEntries;
-  float    fGainValue;
   
   if( !weKnowCapabilities )
     {
@@ -695,26 +706,43 @@ bool FliCameraC::setLowGain(uint32_t gainIndex)
       // check the index is not out of bounds
       if( gainIndex < uiNumGainEntries )
 	{
+	  this->uiLowGainIndex = gainIndex;
 	  // Set the gain index for low channel - need to retreive device index for given index first
 	  FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow[gainIndex].uiDeviceIndex);
 	  // Read it back - verification - should be the same as what was set
 	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainDeviceIndex);
-	  fGainValue = (float)pNewTableLow[gainIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
+	  uint32_t lowIndex;
+	  for( lowIndex=0; lowIndex<s_camCapabilities.uiLowGain; lowIndex++ )
+	    {
+	      if( uiGainDeviceIndex == pNewTableLow[lowIndex].uiDeviceIndex )
+		{
+		  break;
+		}
+	    }
+	  if( lowIndex != gainIndex )
+	    {
+	       std::cerr << "FliCameraC::setLowGain() ERROR: requested gain index " << gainIndex
+			 << ", but read back " << lowIndex << "." << std::endl;
+	    }
+	  this->fLowGainValue = (float)pNewTableLow[gainIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
 	  printf( "Current low gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
-		  gainIndex, uiGainDeviceIndex, fGainValue );
+		  gainIndex, uiGainDeviceIndex, this->fLowGainValue );
 	  // return true only if read-back is identical
+	  delete [] pNewTableLow;
 	  return (uiGainDeviceIndex == pNewTableLow[gainIndex].uiDeviceIndex);
 	}
       else
 	{
-	  std::cerr << "FliCameraC::setLowGain() ERROR: index %d is out of range 0..%d"
-		    << gainIndex << s_camCapabilities.uiLowGain << std::endl;	  
+	  std::cerr << "FliCameraC::setLowGain() ERROR: index " << gainIndex <<
+	    " is out of range 0.." << s_camCapabilities.uiLowGain << std::endl;
+	  delete [] pNewTableLow;
 	  return false;
 	}
     }
   else
     {
       std::cerr << "FliCameraC::setLowGain() ERROR: FPROSensor_GetGainTable() failed." << std::endl;
+      delete [] pNewTableLow;
       return false;
     }
 }
@@ -723,9 +751,8 @@ bool FliCameraC::setLowGain(uint32_t gainIndex)
 /// return true if succeeded, false if failed
 bool FliCameraC::setHighGain(uint32_t gainIndex)
 {
-  uint32_t uiGainDeviceIndex;
   uint32_t uiNumGainEntries;
-  float    fGainValue;
+  uint32_t uiGainDeviceIndex;
   
   if( !weKnowCapabilities )
     {
@@ -746,26 +773,44 @@ bool FliCameraC::setHighGain(uint32_t gainIndex)
       // check the index is not out of bounds
       if( gainIndex < uiNumGainEntries )
 	{
+	  this->uiHighGainIndex = gainIndex;
 	  // Set the gain index for high channel - need to retreive device index for given index first
 	  FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh[gainIndex].uiDeviceIndex);
 	  // Read it back - verification - should be the same as what was set
 	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainDeviceIndex);
-	  fGainValue = (float)pNewTableHigh[gainIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
+	  uint32_t highIndex;
+	  for( highIndex=0; highIndex<s_camCapabilities.uiLowGain; highIndex++ )
+	    {
+	      if( uiGainDeviceIndex == pNewTableHigh[highIndex].uiDeviceIndex )
+		{
+		  break;
+		}
+	    }
+	  if( highIndex != gainIndex )
+	    {
+	       std::cerr << "FliCameraC::setHighGain() ERROR: requested gain index " << gainIndex
+			 << ", but read back " << highIndex << "." << std::endl;
+	    }
+	  
+	  this->fHighGainValue = (float)pNewTableHigh[gainIndex].uiValue / (float)FPRO_GAIN_SCALE_FACTOR;
 	  printf( "Current high gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
-		  gainIndex, uiGainDeviceIndex, fGainValue );
+		  gainIndex, uiGainDeviceIndex, this->fHighGainValue );
 	  // return true only if read-back is identical
+	  delete [] pNewTableHigh;
 	  return (uiGainDeviceIndex == pNewTableHigh[gainIndex].uiDeviceIndex);
 	}
       else
 	{
 	  std::cerr << "FliCameraC::setHighGain() ERROR: index %d is out of range 0..%d"
 		    << gainIndex << s_camCapabilities.uiHighGain << std::endl;	  
+	  delete [] pNewTableHigh;
 	  return false;
 	}	
     }
   else
     {
       std::cerr << "FliCameraC::setHighGain() ERROR: FPROSensor_GetGainTable() failed." << std::endl;
+	  delete [] pNewTableHigh;
       return false;
     }
 }
@@ -778,7 +823,6 @@ bool FliCameraC::getPrintConfig()
   int32_t iResult = -1;
 
   uint32_t colOffset = 0, rowOffset = 0, width = 0, height = 0;
-  uint64_t exposureTime = 0, frameDelay = 0;
   bool immediate = false;
   bool isHdrEnabled = false;
   double temperatureSetPoint = 99.9;
@@ -790,7 +834,7 @@ bool FliCameraC::getPrintConfig()
       std::cerr << "FliCameraC::getConfig() ERROR: FPROFrame_GetImageArea() failed, retval=" << iResult << std::endl;
     }
   
-  iResult = FPROCtrl_GetExposure( siDeviceHandle, &exposureTime, &frameDelay, &immediate );
+  iResult = FPROCtrl_GetExposure( siDeviceHandle, &(this->exposureTime), &(this->frameDelay), &immediate );
   if( iResult < 0 )
     {
       std::cerr << "FliCameraC::getConfig() ERROR: FPROFrame_GetExposure() failed, retval=" << iResult << std::endl;
@@ -818,8 +862,8 @@ bool FliCameraC::getPrintConfig()
   printf("    Width      %5d\n", width);
   printf("    Height     %5d\n", height);
   printf("  Exposure [milliseconds]\n");
-  printf("    Exposure time %13.6f\n", ((double)exposureTime)/1000000.0 );
-  printf("    Frame delay   %13.6f\n", ((double)frameDelay)/1000000.0);
+  printf("    Exposure time %13.6f\n", ((double)(this->exposureTime))/1000000.0 );
+  printf("    Frame delay   %13.6f\n", ((double)(this->frameDelay))/1000000.0);
   printf("    Immediate      %d\n", (int)immediate );
   printf("  HDR mode enabled %d\n", (int)isHdrEnabled );
   
@@ -1033,13 +1077,27 @@ bool FliCameraC::getImage()
   if( isExternalTriggerEnabled )
     {
       iResult = FPROFrame_GetVideoFrameExt( siDeviceHandle, pFrame, &uiSizeGrabbed );
-      std::cout << "DEBUG: calling FPROFrame_GetVideoFrameExt\n";
+      //std::cout << "DEBUG: calling FPROFrame_GetVideoFrameExt\n";
     }
   else
     {
       iResult = FPROFrame_GetVideoFrame( siDeviceHandle, pFrame, &uiSizeGrabbed, 0 );
       //					 (this->exposureTime + this->frameDelay) / 1000000 + 1000 );
     }
+  // calculate approx time of exposure start
+  // !@#$%^& TODO we get time at the end of frame readout, so we actually should compensate
+  // for readout time (and shutter delay time as well...)
+  ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
+    - boost::posix_time::nanoseconds(this->exposureTime); 
+  // external trigger is synced to GPS PPS, so we can truncate sub-seconds
+  ptime_truncFrameTimeStamp = ptime_frameTimeStamp
+    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
+  // internal trigger is not synced (?), so we round sub-seconds		      
+  uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
+  ptime_roundFrameTimeStamp = ptime_frameTimeStamp
+    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
+    + boost::posix_time::seconds(extraSec);
+  
   // If the FPROFrame_GetVideoFrame() succeeded- then process it
   if (iResult >= 0)
     {
@@ -1227,5 +1285,299 @@ bool FliCameraC::convertLdrRawToBitmap16bit( uint16_t* bitamp16bit )
 void* FliCameraC::getImagePtr()
 {
   return (void *)(pFrame + s_camCapabilities.uiMetaDataSize + FLICAMERA_FRAME_SIZE_ADD_BULGARIAN_CONSTATNT);
+}
+
+
+//--------------------------------------------------------------
+/// returns timestam (start of capture) for the last frame.
+/// calculated in FliCameraC::getImage()
+void FliCameraC::getLastFrameTimeStamp( boost::posix_time::ptime* timestamp )
+{
+  if( isExternalTriggerEnabled )
+    {
+      *timestamp = ptime_truncFrameTimeStamp;
+    }
+  else
+    {
+      *timestamp = ptime_roundFrameTimeStamp;
+    }  
+}
+
+//--------------------------------------------------------------
+/// set coordinates that will be written to FITS header file
+void FliCameraC::setFitsLocation( double lat, double lon, double alt, std::string loc )
+{
+  this->latitude = lat;
+  this->longitude = lon;
+  this->altitude = alt;
+  this->str_siteLocation = loc;
+}
+
+//--------------------------------------------------------------
+/// return true if succeeded, false if failed
+// 
+// INSTRUME ... camera type eg Nikon D810, FLI Kepler KL4040
+// CAMERA ... camera type eg Nikon D810, FLI Kepler KL4040
+// OBSTIME
+// EXPTIME
+// SITELAT
+// SITELONG
+// SITEALT
+// TELESCOP "FIREOPAL016"
+// SITELOC  "Perenjori"
+// FILENAME
+// ORIGIN
+// HIGHGAIN
+// LOWGAIN
+// LHIMG    "L" or "H"
+// --< optional >-----
+// APERTUR
+// IMAGETYP "LIGHT"
+
+bool FliCameraC::writeFitsKeywords(fitsfile *fp, const char *filename, char channel )
+{
+  int status = 0;
+  if(ffdkey(fp, "COMMENT", &status))
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! ffdkey( , \"COMMENT\", ) status = " << status << std::endl;
+      return false;
+    }
+  if(ffdkey(fp, "COMMENT", &status))
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! ffdkey( , \"COMMENT\", ) status = " << status << std::endl;
+      return false;
+    }
+
+  char *buff;
+  
+  buff = new char[ strlen(filename) ];
+  strncpy( buff, filename, strlen(filename) );
+
+  //   int fits_write_key / ffpky
+  //    (fitsfile *fptr, int datatype, char *keyname, DTYPE *value,
+  //        char *comment, > int *status)  
+  // --------- FILENAME -----------------
+  if( fits_write_key(fp, TSTRING, "FILENAME", buff, "", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"FILENAME\", "
+		<< filename << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+  delete buff;
+
+  // --------- INSTRUME ----------------
+  buff = new char[256];
+  snprintf( buff, 256, "FLI Kepler KL4040");
+  
+  if( fits_write_key(fp, TSTRING, "INSTRUME", buff, "Instrument type", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"INSTRUME\", "
+		<< buff << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+
+  // --------- CAMERA ----------------
+  
+  if( fits_write_key(fp, TSTRING, "CAMERA", buff, "Camera model", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"CAMERA\", "
+		<< buff << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+
+  // --------- DETNAM ----------------
+
+  snprintf( buff, 256, "Gsense 4040");
+  if( fits_write_key(fp, TSTRING, "DETNAM", buff, "Detector used to make the observation", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"DETNAM\", "
+		<< buff << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+
+  delete buff;
+ 
+  // --------- OBSTIME -----------------
+  std::string str_timeStamp;
+  if( isExternalTriggerEnabled )
+    {
+      str_timeStamp = to_iso_string( ptime_truncFrameTimeStamp );
+      buff = new char[str_timeStamp.length()+1];
+      strncpy( buff, str_timeStamp.c_str(), str_timeStamp.length()+1 );
+    }
+  else
+    {
+      str_timeStamp = to_iso_string( ptime_frameTimeStamp );
+      buff = new char[str_timeStamp.length()+1];
+      strncpy( buff, str_timeStamp.c_str(), str_timeStamp.length()+1 );
+    }
+  if( fits_write_key(fp, TSTRING, "OBSTIME", buff, "ISO 8601 UTC timestamp start exposure", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"OBSTIME\", "
+		<< buff << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+  delete buff;
+  
+  // --------- EXPTIME -----------------
+  double dExpTime = (double)(this->exposureTime)/1000000000.0; // [ns] -> [s]
+  if( fits_write_key( fp, TDOUBLE, "EXPOSURE", &dExpTime, "Exposure time in s", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"EXPTIME\", "
+		<< dExpTime << ", , ) status =" << status << std::endl;
+      return false;
+    }
+
+  // --------- SITELAT -----------------
+  if( fits_write_key( fp, TDOUBLE, "SITELAT", &(this->latitude), "latitude (WGS84 North positive decimal deg)", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"SITELAT\", "
+		<< this->latitude << ", , ) status =" << status << std::endl;
+      return false;
+    }
+  
+  // --------- SITELON -----------------
+  if( fits_write_key( fp, TDOUBLE, "SITELON", &(this->longitude), "longitude (WGS84 North positive decimal deg)", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"SITELON\", "
+		<< this->longitude << ", , ) status =" << status << std::endl;
+      return false;
+    }
+
+  // --------- SITEALT---------------
+  if( fits_write_key( fp, TDOUBLE, "SITEALT", &(this->altitude), "altitude (metres ASL)", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"SITEALT\", "
+		<< this->altitude << ", , ) status =" << status << std::endl;
+      return false;
+    }
+
+  // --------- SITELOC ---------------
+  buff = new char[ str_siteLocation.length()+1 ];
+  
+  strncpy( buff, str_siteLocation.c_str(), str_siteLocation.length()+1 );
+
+  if( fits_write_key( fp, TSTRING, "SITELOC", buff, "Name of camera site location", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"SITELOC\", "
+		<< this->str_siteLocation << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+  delete buff;
+
+  // --------- TELESCOP ---------------
+  buff = new char[256];
+  gethostname( buff, 256 );
+  if( fits_write_key( fp, TSTRING, "TELESCOP", buff , "Name of telescope", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"TELESCOP\", "
+		<< buff << ", , ) status =" << status << std::endl;
+      delete buff;
+      return false;
+    }
+  delete buff;
+
+  // ---------  HIGHGAIN --------------
+  if( fits_write_key( fp, TDOUBLE, "HIGHGAIN", &(this->fHighGainValue), "High gain channel gain", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"HIGHGAIN\", "
+		<< this->fHighGainValue << ", , ) status =" << status << std::endl;
+      return false;
+    }
+
+  // ---------  LOWGAIN --------------
+  if( fits_write_key( fp, TDOUBLE, "LOWGAIN", &(this->fLowGainValue), "Low gain channel gain", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TDOUBLE, \"LOWGAIN\", "
+		<< this->fLowGainValue << ", , ) status =" << status << std::endl;
+      return false;
+    }
+
+  // ---------  LHIMGCH  ----------------
+  // indicates if the image is Low or High gain channel ("L" or "H")
+  buff = new char[256];
+  switch( channel )
+    {
+    case 'H':
+      snprintf( buff, 256, "%s", "H");
+      break;
+    case 'L':
+      snprintf( buff, 256, "%s", "L");
+      break;
+    default:
+      snprintf( buff, 256, "%s", "INVALID");
+    }
+  
+  if( fits_write_key( fp, TSTRING, "LHIMGCH", buff, "Low or High gain channel identification", &status) )
+    {
+      std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"LHIMGCH\", "
+		<< channel << ", , ) status =" << status << std::endl;
+      return false;
+    }
+  delete buff;
+ 
+  return true;
+}
+
+//--------------------------------------------------------------
+/// return true if succeeded, false if failed
+int FliCameraC::writeFits(const char *filename, int width, int height, void *data, char channel )
+{
+  FILE *pFile = fopen(filename, "r");
+  if(pFile != NULL)
+    {
+      fclose(pFile);
+      std::cerr << "flictl: writeFits() Failed! File " << filename << " already exists" << std::endl;
+      return 1;
+    }
+  
+  int status = 0;
+  long naxes[2] = {width, height};
+  fitsfile *fp;
+  
+  fits_create_file(&fp, filename, &status);
+  if(status)
+    {
+      std::cerr << "flictl: writeFits() Failed! fits_create_file() retval " << status << std::endl;
+      fits_report_error(stderr, status);
+      return -1;
+    }
+  
+  fits_create_img(fp, USHORT_IMG, 2, naxes, &status);
+  if(status)
+    {
+      std::cerr << "flictl: writeFits() Failed! fits_create_img() retval " << status << std::endl;
+      fits_report_error(stderr, status);
+      return -1;
+    }
+  
+  fits_write_date(fp, &status);
+  
+  fits_write_img(fp, TUSHORT, 1, (width * height), data, &status);
+  if(status)
+    {
+      std::cerr << "flictl: writeFits() Failed! fits_write_img() retval " << status << std::endl;
+      fits_report_error(stderr, status);
+      return -1;
+    }
+
+  writeFitsKeywords(fp, filename, channel);
+  
+  fits_close_file(fp, &status);
+  
+  if(status)
+    {
+      std::cerr << "flictl: writeFits() Failed! fits_close_file() retval " << status << std::endl;
+      fits_report_error(stderr, status);
+      return -1;
+    }
+  
+  return 0;
 }
 

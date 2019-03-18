@@ -3,7 +3,7 @@
 #include "flictl.h"
 
 #include <boost/program_options.hpp>
-#include <boost/date_time/gregorian/gregorian.hpp>
+//#include <boost/date_time/gregorian/gregorian.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include <fitsio.h>
@@ -49,58 +49,6 @@ int writeMetaData( const char *filename, uint8_t *mem, uint32_t memSize )
   return 0;  
 }
 
-/// just write a bitmap to fits file.
-int writeFits(const char *filename, int width, int height, void *data)
-{
-  FILE *pFile = fopen(filename, "r");
-  if(pFile != NULL)
-    {
-      fclose(pFile);
-      std::cerr << "flictl: writeFits() Failed! File " << filename << " already exists" << std::endl;
-      return 1;
-    }
-  
-  int status = 0;
-  long naxes[2] = {width, height};
-  fitsfile *fp;
-  
-  fits_create_file(&fp, filename, &status);
-  if(status)
-    {
-      std::cerr << "flictl: writeFits() Failed! fits_create_file() retval " << status << std::endl;
-      fits_report_error(stderr, status);
-      return -1;
-    }
-  
-  fits_create_img(fp, USHORT_IMG, 2, naxes, &status);
-  if(status)
-    {
-      std::cerr << "flictl: writeFits() Failed! fits_create_img() retval " << status << std::endl;
-      fits_report_error(stderr, status);
-      return -1;
-    }
-  
-  fits_write_date(fp, &status);
-  
-  fits_write_img(fp, TUSHORT, 1, (width * height), data, &status);
-  if(status)
-    {
-      std::cerr << "flictl: writeFits() Failed! fits_write_img() retval " << status << std::endl;
-      fits_report_error(stderr, status);
-      return -1;
-    }
-  
-  fits_close_file(fp, &status);
-  
-  if(status)
-    {
-      std::cerr << "flictl: writeFits() Failed! fits_close_file() retval " << status << std::endl;
-      fits_report_error(stderr, status);
-      return -1;
-    }
-  
-  return 0;
-}
 
 void exitCloseCameraDevice( FliCameraC* fc, int status )
 {
@@ -131,12 +79,20 @@ int main(int argc, const char ** argv)
       // the default values are what camera configuretion dump reports after camera power-up
       uint64_t local_exposureTime = 2000000; // 2ms aka 1/500s
       uint64_t local_frameDelay = 0; // 0s
-      std::string fileNameBase = "fli_image";
+      std::string fileNameBase = "fli_image_";
       std::string fileName;
-      
+      std::string siteLocation = "default_lab";
+
+      // default coordinates - Perth, Curtin Bentley campus
+      double latitude = -32.00720;
+      double longitude = 115.89469;
+      double altitude = 50.0;
+
       boost::posix_time::ptime ptime_frameTimeStamp;
       boost::posix_time::ptime ptime_truncFrameTimeStamp;
       boost::posix_time::ptime ptime_roundFrameTimeStamp;
+      
+      boost::posix_time::ptime ptime_fileNameFrameTimeStamp;
       std::string str_fileNameFrameTimeStamp = "";
       
       po::options_description desc("Usage:\n flictl [options]\n\nOptions");
@@ -165,9 +121,13 @@ int main(int argc, const char ** argv)
 	("getprintconfig", "Read configuration from camera and print it")
 	("grabimage,g", "Grab single image and exit")
 	("grabimages,G", po::value<uint32_t>(&numImages), "Grab N images and exit")
-	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L.fits + file_H.fits (low gain and high gain images)")
+	("filename,f", po::value<std::string>(&fileNameBase), "Filename base for image(s) is captured.\n\tExample: -f file transfers into file_L_fli.fits + file_H_fli.fits (low gain and high gain images)")
 	("time",  po::bool_switch(&isTimeInFileNames), "Add exposure start time to filename(s)" )
-	("meta",  po::bool_switch(&doWriteMetaData), "Write binary meta data to extra file" );
+	("meta",  po::bool_switch(&doWriteMetaData), "Write binary meta data to extra file" )
+	("lat", po::value<double>(&latitude), "Set latitude that will be written into FITS header [double, decimal degrees]")
+	("lon", po::value<double>(&longitude), "Set longitude that will be written into FITS header [double, decimal degrees]")
+	("alt", po::value<double>(&altitude), "Set altitude that will be written into FITS header [double, meters]")
+	("location", po::value<std::string>(&siteLocation), "Set location name that will be written into FITS header.");
       
       po::variables_map vm;
 
@@ -210,6 +170,26 @@ int main(int argc, const char ** argv)
       if( vm.count("meta") )
 	{
 	  std::cout << "DEBUG: write meta data to extra file = " << doWriteMetaData << std::endl;
+	}
+
+      if( vm.count("lat") )
+	{
+	  std::cout << "DEBUG: latitude = " << latitude << " will be written to FITS file header." << std::endl;
+	}
+
+      if( vm.count("lon") )
+	{
+	  std::cout << "DEBUG: longitude = " << longitude << " will be written to FITS file header."  << std::endl;
+	}
+
+      if( vm.count("alt") )
+	{
+	  std::cout << "DEBUG: altitude = " << altitude << " will be written to FITS file header."  << std::endl;
+	}
+
+      if( vm.count("location") )
+	{
+	  std::cout << "DEBUG: site location = " << siteLocation << " will be written to FITS file header."  << std::endl;
 	}
 
       if( vm.count("filename") )
@@ -390,79 +370,13 @@ int main(int argc, const char ** argv)
       //------------------------------------------------
       if(vm.count("grabimage"))
 	{
-	  std::cout << "Grab single image using internal triggering and exit. " << std::endl;
+	  std::cout << "Grab single image and exit. " << std::endl;
 	  /// Grab single image and exit
-	  if( ! fc.allocFrameFullRes() )
-	    {
-	      std::cerr << argv[0] << ": fc.allocFrameFullRes() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTL_ERR_FAILED_ALLOC_FRAME );
-	    }
-	  if( ! fc.prepareCaptureFullSensor() )
-	    {
-	      std::cerr << argv[0] << ": fc.prepareCaptureFullSensor() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTL_ERR );
-	    }
-	  if( ! fc.grabImage() )
-	    {
-	      std::cerr << argv[0] << ": fc.grabImage() Failed!" << std::endl;
-	      exitCloseCameraDevice( &fc, FLICTL_ERR_FAILED_GRAB_IMAGE );
-	    }
-	  if( isTimeInFileNames )
-	    {
-	      // calculate approx time of exposure start
-	      // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
-	      // for readout time (and shutter delay time as well...)
-	      ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
-		- boost::posix_time::nanoseconds(local_exposureTime);
-	      if( isExtTriggerEnabled )
-		{
-		  // external trigger is synced to GPS PPS, so we can truncate sub-seconds
-		  ptime_truncFrameTimeStamp = ptime_frameTimeStamp
-		    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
-		  str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
-		}
-	      else
-		{
-		  // internal trigger is not synced (?), so we round sub-seconds
-		  uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
-		  ptime_roundFrameTimeStamp = ptime_frameTimeStamp
-		    - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
-		    + boost::posix_time::seconds(extraSec);
-		  str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
-		}		    
-	    }
-
-	  uint16_t* bitmap16bitL = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
-	  uint16_t* bitmap16bitH = new uint16_t[ FLICAMERA_GSENSE4040_SENSOR_HEIGHT * FLICAMERA_GSENSE4040_SENSOR_WIDTH ];
-
-	  fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );
-	  char *fName;
-	  
-	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_L.fits";
-	  std::cout << "Write low gain image to as " << fileName << std::endl;
-	  fName = &fileName[0u];
-	  // TODO: check retval of writeFits
-	  writeFits( fName,
-		     FLICAMERA_GSENSE4040_SENSOR_WIDTH,
-		     FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
-		     bitmap16bitL );
-
-	  fileName = fileNameBase + str_fileNameFrameTimeStamp + "_H.fits";
-	  std::cout << "Write high gain image to as " << fileName << std::endl;
-	  fName = &fileName[0u];
-	  // TODO: check retval of writeFits
-	  writeFits( fName,
-		     FLICAMERA_GSENSE4040_SENSOR_WIDTH,
-		     FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
-		     bitmap16bitH );
-	  delete [] bitmap16bitL;
-	  delete [] bitmap16bitH;
-	  // all good exit witout error
-	  exitCloseCameraDevice( &fc, FLICTL_OK );
+	  numImages = 1;
 	}
       
       //------------------------------------------------
-      if(vm.count("grabimages"))
+      if(vm.count("grabimages") || vm.count("grabimage"))
 	{
 	  /// Grab N images and exit
 
@@ -496,6 +410,8 @@ int main(int argc, const char ** argv)
 	  uint32_t numDigits = 5;
 	  char numberStr[numDigits + 1];
 	  char *fName;
+
+	  fc.setFitsLocation( latitude, longitude, altitude, siteLocation );
 	  
 	  for( uint32_t i=0; i<numImages; i++ )
 	    {
@@ -510,55 +426,44 @@ int main(int argc, const char ** argv)
 		  // TODO - define specific err code
 		  exitCloseCameraDevice( &fc, FLICTL_ERR );
 		}
-	      // calculate approx time of exposure start
-	      // !@#$%^& TODO we get time at the end of frame readous, so we actually should compensate
-	      // for readout time (and shutter delay time as well...)
-	      ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
-		- boost::posix_time::nanoseconds(local_exposureTime); 
-	      // external trigger is synced to GPS PPS, so we can truncate sub-seconds
-	      ptime_truncFrameTimeStamp = ptime_frameTimeStamp
-		- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
+
+	      fc.getLastFrameTimeStamp( &ptime_fileNameFrameTimeStamp );
+	      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_fileNameFrameTimeStamp );
+		
 	      if( isTimeInFileNames )
 		{
 		  if( isExtTriggerEnabled )
 		    {
-		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_truncFrameTimeStamp );
 		      std::cout << "  Externally triggered frame capture time = "
-				<< to_iso_string( ptime_truncFrameTimeStamp ) << std::endl;
+				<< str_fileNameFrameTimeStamp << std::endl;
 		    }
 		  else
-		    {
-		      // internal trigger is not synced (?), so we round sub-seconds		      
-		      uint32_t extraSec = (( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000) >= 500000000);
-		      ptime_roundFrameTimeStamp = ptime_frameTimeStamp
-			- boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
-			+ boost::posix_time::seconds(extraSec);
-		      str_fileNameFrameTimeStamp = "_" + to_iso_string( ptime_roundFrameTimeStamp );
+		    {		      
 		      std::cout << "  Approx internally triggered frame capture time = "
-				<< to_iso_string( ptime_frameTimeStamp ) << std::endl;
+				<< str_fileNameFrameTimeStamp << std::endl;
 		    }		    
 		}
 	      fc.convertHdrRawToBitmaps16bit( bitmap16bitL, bitmap16bitH );	      
 	      // TODO: replace "%05d" with something using numDigits
 	      snprintf( numberStr, numDigits+1, "%05d", i );
 	      // TODO: add time to the file name - as for DFN cameras
-	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L.fits";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_L_fli.fits";
 	      std::cout << "  Write low gain image as " << fileName << std::endl;
 	      fName = &fileName[0u];
-	      // TODO: check retval of writeFits
-	      writeFits( fName,
-			 FLICAMERA_GSENSE4040_SENSOR_WIDTH,
-			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
-			 bitmap16bitL );
+	      // TODO: check retval of writeFits	      
+	      fc.writeFits( fName,
+			    FLICAMERA_GSENSE4040_SENSOR_WIDTH,
+			    FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
+			    bitmap16bitL, 'L' );
 	      
-	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H.fits";
+	      fileName = fileNameBase + numberStr + str_fileNameFrameTimeStamp + "_H_fli.fits";
 	      std::cout << "  Write high gain image as " << fileName << std::endl;
 	      fName = &fileName[0u];
 	      // TODO: check retval of writeFits
-	      writeFits( fName,
+	      fc.writeFits( fName,
 			 FLICAMERA_GSENSE4040_SENSOR_WIDTH,
 			 FLICAMERA_GSENSE4040_SENSOR_HEIGHT,
-			 bitmap16bitH );
+			    bitmap16bitH, 'H' );
 
 	      if( doWriteMetaData )
 		{
