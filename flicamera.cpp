@@ -1405,17 +1405,17 @@ bool FliCameraC::writeFitsKeywords(fitsfile *fp, const char *filename, char chan
   std::string str_timeStamp;
   if( isExternalTriggerEnabled )
     {
-      str_timeStamp = to_iso_string( ptime_truncFrameTimeStamp );
+      str_timeStamp = to_iso_extended_string( ptime_truncFrameTimeStamp );
       buff = new char[str_timeStamp.length()+1];
       strncpy( buff, str_timeStamp.c_str(), str_timeStamp.length()+1 );
     }
   else
     {
-      str_timeStamp = to_iso_string( ptime_frameTimeStamp );
+      str_timeStamp = to_iso_extended_string( ptime_frameTimeStamp );
       buff = new char[str_timeStamp.length()+1];
       strncpy( buff, str_timeStamp.c_str(), str_timeStamp.length()+1 );
     }
-  if( fits_write_key(fp, TSTRING, "OBSTIME", buff, "ISO 8601 UTC timestamp start exposure", &status) )
+  if( fits_write_key(fp, TSTRING, "OBSTIME", buff, "ISO UTC timestamp start exposure", &status) )
     {
       std::cerr << "flictl: writeFitsKeywords() Failed! fits_write_key( , TSTRING, \"OBSTIME\", "
 		<< buff << ", , ) status =" << status << std::endl;
