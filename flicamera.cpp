@@ -1095,8 +1095,17 @@ bool FliCameraC::getImage()
   // calculate approx time of exposure start
   // !@#$%^& TODO we get time at the end of frame readout, so we actually should compensate
   // for readout time (and shutter delay time as well...)
-  ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
-    - boost::posix_time::nanoseconds(this->exposureTime);
+  ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time();
+
+  // get actual exposure time from the FLI camera rather than relaying
+  // on commandline argument or default value set in constructor
+  bool immediate = false;
+  iResult = FPROCtrl_GetExposure( siDeviceHandle, &(this->exposureTime), &(this->frameDelay), &immediate );
+  if( iResult < 0 )
+    {
+      std::cerr << "FliCameraC::getImage() ERROR: FPROFrame_GetExposure() failed, retval=" << iResult << std::endl;
+    }
+  ptime_frameTimeStamp -= boost::posix_time::nanoseconds(this->exposureTime);
   //  std::cout << "DEBUG: FliCameraC::getImage(): ptime_frameTimeStamp = " << ptime_frameTimeStamp<< std::endl;
   //  std::cout << "DEBUG: FliCameraC::getImage(): to_iso_string( ptime_frameTimeStamp ) = "
   //	    << to_iso_string( ptime_frameTimeStamp ) << std::endl;
