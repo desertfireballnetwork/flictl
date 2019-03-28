@@ -21,15 +21,23 @@ FliCameraC::FliCameraC():
   longitude = 115.89469;
   altitude = 50.0;
 
-  // default low gain index setting is 1, which corresponds to device index 3 and gain 0.600
+  // default low gain index setting of FLI camera power-on seems to be 1,
+  // which corresponds to device index 3 and gain 0.600
   fLowGainValue = 2.8;
   uiLowGainIndex = 14;
-  // default high gain index setting is 10, which corresponds to device index 19 and gain 2.200
+  // default high gain index setting of FLI camera power-on seems to be 10,
+  // which corresponds to device index 19 and gain 2.200
   fHighGainValue = 16.5;
   uiHighGainIndex = 57;
   
   str_fileNameFrameTimeStamp = "";
   str_siteLocation = "lab";
+  
+  // default exposure time setting of FLI camera power-on seems to be ~ 1/500s
+  // (it's actially 2010960 nanoseconds)
+  exposureTime = 2010960;
+  // default exposure time setting of FLI camera power-on seems to be zero
+  frameDelay = 0;
 }
 
 //--------------------------------------------------------------
@@ -1077,7 +1085,7 @@ bool FliCameraC::getImage()
   if( isExternalTriggerEnabled )
     {
       iResult = FPROFrame_GetVideoFrameExt( siDeviceHandle, pFrame, &uiSizeGrabbed );
-      //std::cout << "DEBUG: calling FPROFrame_GetVideoFrameExt\n";
+      //std::cout << "DEBUG: FliCameraC::getImage(): calling FPROFrame_GetVideoFrameExt\n";
     }
   else
     {
@@ -1088,7 +1096,10 @@ bool FliCameraC::getImage()
   // !@#$%^& TODO we get time at the end of frame readout, so we actually should compensate
   // for readout time (and shutter delay time as well...)
   ptime_frameTimeStamp = boost::posix_time::microsec_clock::universal_time()
-    - boost::posix_time::nanoseconds(this->exposureTime); 
+    - boost::posix_time::nanoseconds(this->exposureTime);
+  //  std::cout << "DEBUG: FliCameraC::getImage(): ptime_frameTimeStamp = " << ptime_frameTimeStamp<< std::endl;
+  //  std::cout << "DEBUG: FliCameraC::getImage(): to_iso_string( ptime_frameTimeStamp ) = "
+  //	    << to_iso_string( ptime_frameTimeStamp ) << std::endl;
   // external trigger is synced to GPS PPS, so we can truncate sub-seconds
   ptime_truncFrameTimeStamp = ptime_frameTimeStamp
     - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 );
@@ -1097,6 +1108,9 @@ bool FliCameraC::getImage()
   ptime_roundFrameTimeStamp = ptime_frameTimeStamp
     - boost::posix_time::nanoseconds( ptime_frameTimeStamp.time_of_day().total_nanoseconds() % 1000000000 )
     + boost::posix_time::seconds(extraSec);
+  //  std::cout << "DEBUG: FliCameraC::getImage(): ptime_roundFrameTimeStamp = " << ptime_roundFrameTimeStamp<< std::endl;
+  //  std::cout << "DEBUG: FliCameraC::getImage(): to_iso_string( ptime_roundFrameTimeStamp ) = "
+  //	    << to_iso_string( ptime_roundFrameTimeStamp ) << std::endl;
   
   // If the FPROFrame_GetVideoFrame() succeeded- then process it
   if (iResult >= 0)

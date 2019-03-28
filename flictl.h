@@ -1,7 +1,7 @@
 #pragma once
 
 #define FLICTL_APP_DESCR "FLI Kepler camera commandline control tool (flictl)"
-#define FLICTL_VERSION "0.3.0"
+#define FLICTL_VERSION "0.3.1"
 
 #define FLICTL_OK  (0)
 #define FLICTL_ERR (1)
