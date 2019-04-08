@@ -61,6 +61,8 @@ int main(int argc, const char ** argv)
 {
   try
     {
+      int32_t iResult = FLICTL_ERR_DEFAULT_CODE;
+
       double coolTemp = 25.0;
       bool shutterOpen = false;
       bool isExtTriggerEnabled = false;
@@ -82,7 +84,13 @@ int main(int argc, const char ** argv)
       std::string fileNameBase = "fli_image_";
       std::string fileName;
       std::string siteLocation = "default_lab";
-
+      
+      // libflipro debug
+      bool isDebug = false;
+      uint32_t debugLevel = 0;
+      FPRODBGLEVEL debugLevelLibFliPro = FPRO_DEBUG_NONE;
+      std::string logFolder = ".";
+      
       // default coordinates - Perth, Curtin Bentley campus
       double latitude = -32.00720;
       double longitude = 115.89469;
@@ -96,18 +104,20 @@ int main(int argc, const char ** argv)
       std::string str_fileNameFrameTimeStamp = "";
       
       po::options_description desc("Usage:\n flictl [options]\n\nOptions");
-
+      
 #define EXT_TRIG_TYPE_HELP_TEXT "Set external trigger type\n\t" 
       
       char extTriggerHelpText[512];
       snprintf( extTriggerHelpText, 512, "Set external trigger type \n\t%d ... falling edge\n\t%d ... raising edge\n\t%d ... active low\n\t%d ... active high",
-		FLI_EXT_TRIGGER_FALLING_EDGE, FLI_EXT_TRIGGER_RISING_EDGE,
-		FLI_EXT_TRIGGER_EXPOSE_ACTIVE_LOW, FLI_EXT_TRIGGER_EXPOSE_ACTIVE_HIGH );
+	FLI_EXT_TRIGGER_FALLING_EDGE, FLI_EXT_TRIGGER_RISING_EDGE,
+	FLI_EXT_TRIGGER_EXPOSE_ACTIVE_LOW, FLI_EXT_TRIGGER_EXPOSE_ACTIVE_HIGH );
       
       desc.add_options()
 	("help,h", "Print flictl help and exit.")
 	("version,V", "Print flictl version and exit.")
-	("printcap,p", po::bool_switch(&printCapabilities), "Print camera capabilities and temperatures")
+	("debug,d", po::value<uint32_t>(&debugLevel), "Enable libfli debug messages at level arg")
+	("logfolder,l", po::value<std::string>(&logFolder), "Set folder where libflipro debug log is saved")
+        ("printcap,p", po::bool_switch(&printCapabilities), "Print camera capabilities and temperatures")
 	("printmodes", po::bool_switch(&printModes), "Print list of camera modes")
 	//	("mode,m", po::value<uint32_t>(&mode), "Set cemare mode (index from list of modes)")
 	("cool,c", po::value<double>(&coolTemp), "Set cooling temperature (Celsius degrees)")
@@ -130,26 +140,53 @@ int main(int argc, const char ** argv)
 	("location", po::value<std::string>(&siteLocation), "Set location name that will be written into FITS header.");
       
       po::variables_map vm;
-
+      
       po::store(po::parse_command_line(argc, argv, desc), vm);
       // no config file yet ... store(parse_config_file("example.cfg", desc), vm);
       notify(vm);
-
+      
       // dunno how to detect that there are no parameters with boost::program_options
       if( (argc <= 1)  || vm.count("help") )
 	{
-	  /// Print help
-	  printVersion();
-	  std::cout << desc << std::endl;
-	  exit( FLICTL_OK );
+          /// Print help
+          printVersion();
+          std::cout << desc << std::endl;
+          exit( FLICTL_OK );
 	}
       if(vm.count("version"))
 	{
 	  /// Print program version
 	  printVersion();
 	  exit( FLICTL_OK );
-	}
+        }
 
+      if( vm.count("logfolder") )
+	{
+          std::cout << "DEBUG: set libflipro log folder " << logFolder << std::endl;
+        }
+      
+      if(vm.count("debug"))
+	{
+	  std::cout << "DEBUG: set libflipro debug level " << debugLevel << std::endl;
+	  debugLevelLibFliPro = (FPRODBGLEVEL)debugLevel;
+	  isDebug = true;
+	  // fancy strings explained here:
+	  // https://docs.microsoft.com/en-us/cpp/cpp/char-wchar-t-char16-t-char32-t?view=vs-2017
+	  std::wstring wideStrLogFolder = std::wstring(logFolder.begin(), logFolder.end());
+	  const wchar_t* lp = wideStrLogFolder.c_str();
+	  iResult = FPRODebug_SetLogPath( lp );
+	  if( iResult < 0 )
+	    {
+              std::cerr << argv[0] << " ERROR: FPRODebug_SetLogPath( " << lp << " ) failed, retval=" << iResult << std::endl;
+            }
+ 	  iResult = FPRODebug_EnableLevel( isDebug, debugLevelLibFliPro );
+	  if( iResult < 0 )
+	    {
+              std::cerr << argv[0] << " ERROR: SFPRODebug_EnableLevel( " << isDebug << ", "
+			<< debugLevelLibFliPro << " ) failed, retval=" << iResult << std::endl;
+            }
+	}
+      
       if(vm.count("lowgain"))
 	{
 	  /// set low gain
@@ -243,12 +280,14 @@ int main(int argc, const char ** argv)
       // list camera devices and open first camera
       if( ! fc.listDevices() )
 	{
-	  std::cerr << argv[0] << ": fc.listDevices() Failed!" << std::endl;
+	  std::cerr << argv[0] << " ERROR: fc.listDevices() failed! No camera attached or not powered?" << std::endl
+		    << "\tHint: try 'lsusb'." << std::endl;
 	  exitCloseCameraDevice( &fc, FLICTL_ERR_NO_CAMERA_FOUND );
 	}
       if( ! fc.openDevice() )
 	{
-	  std::cerr << argv[0] << ": fc.openDevice() Failed!" << std::endl;
+	  std::cerr << argv[0] << " ERROR: fc.openDevice() failed!" << std::endl
+		    << "\tHint: the current user may have restricted access to the camera device." << std::endl;
 	  exitCloseCameraDevice( &fc, FLICTL_ERR_CANNOT_OPEN_CAMERA_DEVICE );
 	}
       fc.getCapabilities();

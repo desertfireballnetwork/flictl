@@ -74,6 +74,15 @@ bool FliCameraC::listDevices()
 {
   int32_t iResult = -1;
   iResult = FPROCam_GetCameraList(&(s_camDeviceInfo[0]), &uiNumDetectedDevices);
+  if( iResult < 0 )
+    {
+      std::cerr << "FliCameraC::listDevices(): failed. FPROCam_GetCameraList() retval=" << iResult << std::endl;
+    }
+  if( uiNumDetectedDevices <= 0 )
+    {
+      std::cerr << "FliCameraC::listDevices(): No devices found.\n"
+		<< "\tFPROCam_GetCameraList() uiNumDetectedDevices=" << uiNumDetectedDevices << std::endl;
+    }
   return ((iResult >= 0) && (uiNumDetectedDevices > 0));
 }
 
@@ -85,6 +94,15 @@ bool FliCameraC::openDevice()
   int32_t iResult = -1;
   siDeviceHandle = -1;
   iResult = FPROCam_Open(&(s_camDeviceInfo[0]), &siDeviceHandle);
+  if( iResult < 0 )
+    {
+      std::cerr << "FliCameraC::openDevice(): failed. FPROCam_Open() retval=" << iResult << std::endl;
+    }
+  if( siDeviceHandle <= 0 )
+    {
+      std::cerr << "FliCameraC::openDevice(): Invalid device handle.\n"
+		<< "\tFPROCam_Open() siDeviceHandle=" << siDeviceHandle << std::endl;
+    }
   isDeviceOpen = ((iResult >= 0) && (siDeviceHandle >= 0));
   return isDeviceOpen;
 }
@@ -104,6 +122,7 @@ bool FliCameraC::closeDevice()
     }
   else
     {
+      std::cerr << "FliCameraC::closeDevice(): failed. FPROCam_Close() retval=" << iResult << std::endl;
       return false;
     }
 }
@@ -115,6 +134,10 @@ bool FliCameraC::getCapabilities()
   int32_t iResult = -1;
   weKnowCapabilities = false;
   iResult = FPROSensor_GetCapabilities(siDeviceHandle, &s_camCapabilities, &uiCamCapSize);
+  if( iResult < 0 )
+    {
+      std::cerr << "FliCameraC::getCapabilities(): failed. FPROSensor_GetCapabilities() retval=" << iResult << std::endl;
+    }    
   weKnowCapabilities = (iResult >=0);
   return weKnowCapabilities;
 }
@@ -125,13 +148,22 @@ bool FliCameraC::getPixelConfig()
 {
   int32_t iResult = -1;
   iResult = FPROFrame_GetPixelConfig(siDeviceHandle, &uiPixelDepth, &uiPixelLSB);
-  return (iResult >=0);
+   if( iResult < 0 )
+     {
+       std::cerr << "FliCameraC::getPixelConfig(): failed. FPROFrame_GetPixelConfig() retval=" << iResult << std::endl;
+       return false;
+     }
+   else
+     {
+       return true;
+     }
 }
 
 //--------------------------------------------------------------
 /// return 1 if succeeded, 0 if failed 
 void FliCameraC::printCapabilities()
 {
+  int32_t iResult = -1;
   uint32_t uiGainEntries;
   uint32_t uiGainIndex;
   float    fGainValue;
@@ -201,7 +233,12 @@ void FliCameraC::printCapabilities()
 	  // a uint32_t value so we allocate an array of uint32_t
 	  uiGainEntries = s_camCapabilities.uiLowGain;
 	  pNewTableLow = new FPROGAINVALUE[s_camCapabilities.uiLowGain];
-	  if (FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow, &uiGainEntries) >= 0)
+	  iResult = FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow, &uiGainEntries);
+	  if ( iResult < 0)
+	    {
+	      std::cerr << "FliCameraC::printCapabilities(): FPROSensor_GetGainTable() for low gain channel failed, reval=" << iResult << std::endl;
+	    }
+	  else
 	    {
 	      printf("  Low gain channel gain table: [tableIndex, deviceIndex, gain]\n");
 	      // now that you have the table entries you can process them
@@ -221,7 +258,12 @@ void FliCameraC::printCapabilities()
 	  printf ("  High gain channel gain table size: %d\n",s_camCapabilities.uiHighGain );
 	  uiGainEntries = s_camCapabilities.uiHighGain;
 	  pNewTableHigh = new FPROGAINVALUE[s_camCapabilities.uiHighGain];
-	  if (FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh, &uiGainEntries) >= 0)
+	  iResult = FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh, &uiGainEntries);
+	  if ( iResult < 0)
+	    {
+	      std::cerr << "FliCameraC::printCapabilities(): FPROSensor_GetGainTable() for high gain channel failed, reval=" << iResult << std::endl;	      
+	    }
+	  else
 	    {
 	      printf("  High gain channel gain table: [tableIndex, deviceIndex, gain]\n");
 	      // now that you have the table entries you can process them
@@ -239,7 +281,12 @@ void FliCameraC::printCapabilities()
 		}
 	    }
 
-	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainIndex);
+	  iResult = FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainIndex);
+	  if ( iResult < 0)
+	    {
+	      std::cerr << "FliCameraC::printCapabilities(): FPROSensor_GetGainIndex() for low gain table failed, reval=" << iResult << std::endl;
+	    }
+	  
 	  uint32_t lowIndex;
 	  for( lowIndex=0; lowIndex<s_camCapabilities.uiLowGain; lowIndex++ )
 	    {
@@ -252,7 +299,12 @@ void FliCameraC::printCapabilities()
 	  printf( "Current low gain index setting is %d, which corresponds to device index %d and gain %5.3f\n",
 		  lowIndex, uiGainIndex, fGainValue );
 
-	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainIndex);
+	  iResult = FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainIndex);
+	  if ( iResult < 0)
+	    {
+	      std::cerr << "FliCameraC::printCapabilities(): FPROSensor_GetGainIndex() for high gain table failed, reval=" << iResult << std::endl;
+	    }
+	  
 	  uint32_t highIndex;
 	  for( highIndex=0; highIndex<s_camCapabilities.uiLowGain; highIndex++ )
 	    {
@@ -286,7 +338,7 @@ bool FliCameraC::setShutterUserControl(bool state)
   if( iResult < 0 )
     {
       std::cerr << "FliCameraC::setShutterUserControl(): failed to set shutter user control state,"
-		<< "\tFPROCtrl_SetShutterOverride retval()=" << iResult << std::endl;
+		<< "\tFPROCtrl_SetShutterOverride() retval=" << iResult << std::endl;
     }
   return (iResult >=0);
 }
@@ -507,7 +559,7 @@ bool FliCameraC::setTemperatureSetPoint( double dblSetPoint )
   iResult = FPROCtrl_SetTemperatureSetPoint(siDeviceHandle, dblSetPoint);
   if( iResult < 0 )
     {
-      std::cerr << "FliCameraC::setTemperatureSetPoint() ERROR: FPROFrame_SetTemperatureSetPoint() failed, retval="
+      std::cerr << "FliCameraC::setTemperatureSetPoint() ERROR: FPROCtrl_SetTemperatureSetPoint() failed, retval="
 		<< iResult << std::endl;
       return false;
     }
@@ -516,7 +568,7 @@ bool FliCameraC::setTemperatureSetPoint( double dblSetPoint )
       iResult = FPROCtrl_GetTemperatureSetPoint(siDeviceHandle, &readBackSetPoint);
        if( iResult < 0 )
 	 {
-	   std::cerr << "FliCameraC::setTemperatureSetPoint() ERROR: FPROFrame_GetTemperatureSetPoint() failed, retval="
+	   std::cerr << "FliCameraC::setTemperatureSetPoint() ERROR: FPROCtrl_GetTemperatureSetPoint() failed, retval="
 		     << iResult << std::endl;
 	   return false;
 	 }
@@ -692,6 +744,7 @@ bool FliCameraC::setExpDelay(uint64_t exposureDelay)
 /// return true if succeeded, false if failed
 bool FliCameraC::setLowGain(uint32_t gainIndex)
 {
+  int32_t iResult = -1;
   uint32_t uiGainDeviceIndex;
   uint32_t uiNumGainEntries;
   
@@ -709,16 +762,36 @@ bool FliCameraC::setLowGain(uint32_t gainIndex)
     }
   pNewTableLow = new FPROGAINVALUE[s_camCapabilities.uiLowGain];
   uiNumGainEntries = s_camCapabilities.uiLowGain;
-  if (FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow, &uiNumGainEntries) >= 0)
+  iResult = FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow, &uiNumGainEntries);
+  if( iResult < 0)
+    {
+      std::cerr << "FliCameraC::setLowGain() ERROR: FPROSensor_GetGainTable() failed. retval=" << iResult << std::endl;
+      delete [] pNewTableLow;
+      return false;
+    }
+  else
     {
       // check the index is not out of bounds
       if( gainIndex < uiNumGainEntries )
 	{
 	  this->uiLowGainIndex = gainIndex;
 	  // Set the gain index for low channel - need to retreive device index for given index first
-	  FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow[gainIndex].uiDeviceIndex);
+	  iResult = FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, pNewTableLow[gainIndex].uiDeviceIndex);
+	  if( iResult < 0 )
+	    {
+	      std::cerr <<  "FliCameraC::setLowGain() ERROR: FPROSensor_SetGainIndex failed. retval=" << iResult << std::endl;
+	      delete [] pNewTableLow;
+	      return false;	      
+	    }
 	  // Read it back - verification - should be the same as what was set
-	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainDeviceIndex);
+	  iResult = FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_LOW_CHANNEL, &uiGainDeviceIndex);
+	  if( iResult < 0 )
+	    {
+	      std::cerr <<  "FliCameraC::setLowGain() ERROR: FPROSensor_GetGainIndex failed. retval=" << iResult << std::endl;
+	      delete [] pNewTableLow;
+	      return false;	      
+	    }
+	  
 	  uint32_t lowIndex;
 	  for( lowIndex=0; lowIndex<s_camCapabilities.uiLowGain; lowIndex++ )
 	    {
@@ -747,18 +820,13 @@ bool FliCameraC::setLowGain(uint32_t gainIndex)
 	  return false;
 	}
     }
-  else
-    {
-      std::cerr << "FliCameraC::setLowGain() ERROR: FPROSensor_GetGainTable() failed." << std::endl;
-      delete [] pNewTableLow;
-      return false;
-    }
 }
 
 //--------------------------------------------------------------
 /// return true if succeeded, false if failed
 bool FliCameraC::setHighGain(uint32_t gainIndex)
 {
+  int32_t iResult = -1;
   uint32_t uiNumGainEntries;
   uint32_t uiGainDeviceIndex;
   
@@ -772,20 +840,41 @@ bool FliCameraC::setHighGain(uint32_t gainIndex)
     }
   if (s_camCapabilities.uiHighGain <= 0)
     {
+      /// TODO !@#$$%^ TRENKY add err print
       return false;
     }
   pNewTableHigh = new FPROGAINVALUE[s_camCapabilities.uiHighGain];
   uiNumGainEntries = s_camCapabilities.uiHighGain;
-  if (FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh, &uiNumGainEntries) >= 0)
+  iResult = FPROSensor_GetGainTable(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh, &uiNumGainEntries);
+  if( iResult < 0)
+    {
+      std::cerr << "FliCameraC::setHighGain() ERROR: FPROSensor_GetGainTable() failed. retval=" << iResult << std::endl;
+      delete [] pNewTableLow;
+      return false;
+    }
+  else
     {
       // check the index is not out of bounds
       if( gainIndex < uiNumGainEntries )
 	{
 	  this->uiHighGainIndex = gainIndex;
 	  // Set the gain index for high channel - need to retreive device index for given index first
-	  FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh[gainIndex].uiDeviceIndex);
+	  iResult = FPROSensor_SetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, pNewTableHigh[gainIndex].uiDeviceIndex);
+	  if( iResult < 0 )
+	    {
+	      std::cerr <<  "FliCameraC::setHighGain() ERROR: FPROSensor_SetGainIndex failed. retval=" << iResult << std::endl;
+	      delete [] pNewTableLow;
+	      return false;	      
+	    }
 	  // Read it back - verification - should be the same as what was set
-	  FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainDeviceIndex);
+	  iResult = FPROSensor_GetGainIndex(siDeviceHandle, FPRO_GAIN_TABLE_HIGH_CHANNEL, &uiGainDeviceIndex);
+	  if( iResult < 0 )
+	    {
+	      std::cerr <<  "FliCameraC::setHighGain() ERROR: FPROSensor_GetGainIndex failed. retval=" << iResult << std::endl;
+	      delete [] pNewTableLow;
+	      return false;	      
+	    }
+	  
 	  uint32_t highIndex;
 	  for( highIndex=0; highIndex<s_camCapabilities.uiLowGain; highIndex++ )
 	    {
@@ -814,12 +903,6 @@ bool FliCameraC::setHighGain(uint32_t gainIndex)
 	  delete [] pNewTableHigh;
 	  return false;
 	}	
-    }
-  else
-    {
-      std::cerr << "FliCameraC::setHighGain() ERROR: FPROSensor_GetGainTable() failed." << std::endl;
-	  delete [] pNewTableHigh;
-      return false;
     }
 }
 
